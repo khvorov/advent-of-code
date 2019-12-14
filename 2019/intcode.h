@@ -17,16 +17,29 @@ using program_t = std::vector<std::int64_t>;
 
 class VM {
 public:
-    VM(const program_t& code) : code_(code) {}
+    VM(const program_t& code) : code_(code) { reset(); }
 
     ~VM() = default;
 
-    std::int64_t run(std::int64_t input, std::function<void(std::int64_t)>&& on_out) {
+    void reset() {
         mem_ = code_;
         ip_ = 0;
         rb_ = 0;
+        result_ = 0;
+    }
 
-        std::int64_t result = 0;
+    bool is_halted() const {
+        return Opcode::HLT == decode_opcode(mem_[ip_] % 100);
+    }
+
+    std::int64_t run(std::int64_t input, std::function<void(std::int64_t)>&& on_out) {
+        return run(input, std::move(on_out), false);
+    }
+
+    std::int64_t run(std::int64_t input, std::function<void(std::int64_t)>&& on_out, bool stop_on_out) {
+        if (is_halted()) {
+            return result_;
+        }
 
         while (true) {
             Opcode opcode = decode_opcode(mem_[ip_] % 100);
@@ -56,7 +69,14 @@ public:
                 mem_[arg] = input;
             } else if (Opcode::OUT == opcode) {
                 auto arg = get_argument(++ip_, modes[0], ArgMode::Read);
+
                 on_out(arg);
+                result_ = arg;
+
+                if (stop_on_out) {
+                    ++ip_;
+                    return result_;
+                }
             } else if (Opcode::JT == opcode) {
                 auto arg1 = get_argument(++ip_, modes[0], ArgMode::Read);
                 auto arg2 = get_argument(++ip_, modes[1], ArgMode::Read);
@@ -96,11 +116,11 @@ public:
             ++ip_;
         }
 
-        return result;
+        return result_;
     }
 
 private:
-    Opcode decode_opcode(std::int64_t opcode) {
+    Opcode decode_opcode(std::int64_t opcode) const {
         Opcode oc = static_cast<Opcode>(opcode);
 
         if (oc < Opcode::ADD || (oc > Opcode::RBADD && oc != Opcode::HLT)) {
@@ -166,7 +186,8 @@ private:
 private:
     const program_t code_;
     program_t mem_;
-    std::uint64_t ip_{0};
-    std::uint64_t rb_{0};
+    std::uint64_t ip_;
+    std::uint64_t rb_;
+    std::int64_t result_;
 };
 }  // namespace intcode
